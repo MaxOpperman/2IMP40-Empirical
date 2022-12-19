@@ -1,0 +1,19 @@
+ThePublicJiraDataset/3. DataDump/README.md
+ThePublicJiraDataset/3. DataDump/mongodump-JiraRepos.archive
+ThePublicJiraDataset/2. OverviewAnalysis/requirements-manual.txt
+ThePublicJiraDataset/2. OverviewAnalysis/README.md
+ThePublicJiraDataset/2. OverviewAnalysis/OverviewAnalysisResults.png
+ThePublicJiraDataset/2. OverviewAnalysis/OverviewAnalysis.ipynb
+ThePublicJiraDataset/1. DataDownload/requirements-manual.txt
+ThePublicJiraDataset/1. DataDownload/README.md
+ThePublicJiraDataset/1. DataDownload/DownloadData.ipynb
+ThePublicJiraDataset/0. DataDefinition/May2021/jira_issuetype_information_MAY_2021.json
+ThePublicJiraDataset/0. DataDefinition/May2021/jira_field_information_MAY_2021.json
+ThePublicJiraDataset/0. DataDefinition/May2021/jira_data_sources_MAY_2021.json
+ThePublicJiraDataset/0. DataDefinition/jira_issuetype_thematic_analysis.json
+ThePublicJiraDataset/0. DataDefinition/jira_issuetype_information.json
+ThePublicJiraDataset/0. DataDefinition/jira_issuelinktype_information.json
+ThePublicJiraDataset/0. DataDefinition/jira_issue_linktype_mapping.json
+ThePublicJiraDataset/0. DataDefinition/jira_field_information.json
+ThePublicJiraDataset/0. DataDefinition/jira_data_sources.json
+.idea/*
