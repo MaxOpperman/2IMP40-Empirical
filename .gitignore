@@ -17,3 +17,4 @@ ThePublicJiraDataset/0. DataDefinition/jira_issue_linktype_mapping.json
 ThePublicJiraDataset/0. DataDefinition/jira_field_information.json
 ThePublicJiraDataset/0. DataDefinition/jira_data_sources.json
 .idea/*
+.venv/
