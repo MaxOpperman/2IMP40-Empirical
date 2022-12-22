@@ -30,7 +30,7 @@ with open("./jira_issuelinktype_information.json") as f:
 ALL_JIRAS = [jira_name for jira_name in jira_data_sources.keys()]
 
 
-def create_df_1(jira):
+def create_df(jira):
     def extract_mean_and_count():
         return list(
             db[jira].aggregate(
@@ -38,6 +38,35 @@ def create_df_1(jira):
                     {
                         "$match": {
                             "fields.issuelinks": {"$exists": True},
+                        }
+                    },
+                    {
+                        "$group": {
+                            "_id": "$fields.priority",
+                            "avg": {
+                                "$avg": {"$size": "$fields.issuelinks"},
+                            },
+                            "count": {"$count": {}},
+                        }
+                    },
+                    {
+                        "$project": {
+                            "_id": 0,
+                            "name": "$_id.name",
+                            "avg": 1,
+                            "count": 1,
+                        }
+                    },
+                ]
+            )
+        )
+
+    def extract_mean_date_diff():
+        return list(
+            db[jira].aggregate(
+                [
+                    {
+                        "$match": {
                             "fields.resolutiondate": {
                                 "$exists": True,
                                 "$ne": None,
@@ -47,9 +76,6 @@ def create_df_1(jira):
                     {
                         "$group": {
                             "_id": "$fields.priority",
-                            "avg": {
-                                "$avg": {"$size": "$fields.issuelinks"},
-                            },
                             "avgDateDiff": {
                                 "$avg": {
                                     "$dateDiff": {
@@ -68,7 +94,6 @@ def create_df_1(jira):
                         "$project": {
                             "_id": 0,
                             "name": "$_id.name",
-                            "avg": 1,
                             "avgDateDiff": 1,
                             "count": 1,
                         }
@@ -85,22 +110,25 @@ def create_df_1(jira):
 
     records = extract_mean_and_count()
 
-    print(records)
-
     df = pd.DataFrame(
         np.nan,
         index=get_priorities(records),
-        columns=["Mean", "Count", "Mean Date Diff"],
+        columns=["Mean Link Count", "PriorCount", "Mean Date Diff", "DateCount"],
     )
 
     for record in records:
         priority_name = get_priority_name(record)
-        df.loc[priority_name, "Mean"] = record["avg"]
-        df.loc[priority_name, "Count"] = record["count"]
+        df.loc[priority_name, "Mean Link Count"] = record["avg"]
+        df.loc[priority_name, "PriorCount"] = int(record["count"])
 
+    records = extract_mean_date_diff()
+
+    for record in records:
+        priority_name = get_priority_name(record)
         df.loc[priority_name, "Mean Date Diff"] = timedelta(
             seconds=record["avgDateDiff"]
         )
+        df.loc[priority_name, "DateCount"] = int(record["count"])
 
     return df
 
@@ -108,11 +136,11 @@ def create_df_1(jira):
 def compute_stats_1(jiras=ALL_JIRAS):
     for jira in jiras:
         print(f"Processing {jira}...")
-        df = create_df_1(jira)
+        df = create_df(jira)
         print(df, "\n")
 
 
-compute_stats_1(["Hyperledger"])
+compute_stats_1()
 
 
 ###
