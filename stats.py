@@ -29,12 +29,74 @@ with open("./jira_issuelinktype_information.json") as f:
 
 ALL_JIRAS = [jira_name for jira_name in jira_data_sources.keys()]
 
+VERY_LOW = "Very Low"
+LOW = "Low"
+NORMAL = "Normal"
+HIGH = "High"
+VERY_HIGH = "Very High"
+
+STD_PRIORITIES = [VERY_LOW, LOW, NORMAL, HIGH, VERY_HIGH]
+
 
 def create_df(jira):
+    def priority_fields():
+        fields = {"Mojang": ["$fields.customfield_12200.value"]}
+        return ["$fields.priority.name"] + fields.get(jira, [])
+
+    def prior_to_repo_prior(priority):
+        priority_map = {
+            "Mojang": {
+                VERY_LOW: [],
+                LOW: ["Low"],
+                NORMAL: [],
+                HIGH: [],
+                VERY_HIGH: ["Blocker", "Critical", "Very Important"],
+            }
+        }
+
+        return priority_map[jira][priority]
+
+    def generate_conditions(priorities=STD_PRIORITIES):
+        priority = priorities[0]
+        if len(priorities) == 1:
+            return {
+                "$cond": {
+                    "if": {
+                        "$in": [
+                            "$full_priority",
+                            prior_to_repo_prior(priority),
+                        ]
+                    },
+                    "then": priority,
+                    "else": "NO PRIORITY SHOULD NOT HAPPEN",
+                }
+            }
+
+        return {
+            "$cond": {
+                "if": {
+                    "$in": [
+                        "$full_priority",
+                        prior_to_repo_prior(priority),
+                    ]
+                },
+                "then": priority,
+                "else": generate_conditions(priorities[1:]),
+            }
+        }
+
+    def normalize():
+        return [
+            {"$addFields": {"full_priority": {"$ifNull": priority_fields()}}},
+            {"$match": {"full_priority": {"$ne": None}}},
+            {"$addFields": {"std_priority": generate_conditions()}},
+        ]
+
     def extract_mean_and_count():
         return list(
             db[jira].aggregate(
-                [
+                normalize()
+                + [
                     {
                         "$match": {
                             "fields.issuelinks": {"$type": "array"},
@@ -42,19 +104,11 @@ def create_df(jira):
                     },
                     {
                         "$group": {
-                            "_id": "$fields.priority",
+                            "_id": "$std_priority",
                             "avg": {
                                 "$avg": {"$size": "$fields.issuelinks"},
                             },
                             "count": {"$count": {}},
-                        }
-                    },
-                    {
-                        "$project": {
-                            "_id": 0,
-                            "name": "$_id.name",
-                            "avg": 1,
-                            "count": 1,
                         }
                     },
                 ]
@@ -66,101 +120,77 @@ def create_df(jira):
             db[jira].aggregate(
                 [
                     {
-                        '$match': {
-                            'fields.resolutiondate': {
-                                '$exists': True,
-                                '$ne': None
-                            }
+                        "$match": {
+                            "fields.resolutiondate": {"$exists": True, "$ne": None}
                         }
-                    }, {
-                        '$group': {
-                            '_id': {
-                                '$concat': [
+                    },
+                    {
+                        "$group": {
+                            "_id": {
+                                "$concat": [
                                     {
-                                        '$toString': {
-                                            '$year': {
-                                                '$toDate': '$fields.created'
-                                            }
+                                        "$toString": {
+                                            "$year": {"$toDate": "$fields.created"}
                                         }
-                                    }, '?<?', {
-                                        '$toString': {
-                                            '$week': {
-                                                '$toDate': '$fields.created'
-                                            }
+                                    },
+                                    "?<?",
+                                    {
+                                        "$toString": {
+                                            "$week": {"$toDate": "$fields.created"}
                                         }
-                                    }, '?<?', {
-                                        '$toString': {
-                                            '$in': [
-                                                '$fields.priority.name', [
-                                                    'Blocker', 'Complex Fast-Track', 'Critical', 'High', 'Highest', 'Major'
-                                                ]
+                                    },
+                                    "?<?",
+                                    {
+                                        "$toString": {
+                                            "$in": [
+                                                "$fields.priority.name",
+                                                [
+                                                    "Blocker",
+                                                    "Complex Fast-Track",
+                                                    "Critical",
+                                                    "High",
+                                                    "Highest",
+                                                    "Major",
+                                                ],
                                             ]
                                         }
-                                    }
+                                    },
                                 ]
                             },
-                            'avgSecondsDiff': {
-                                '$avg': {
-                                    '$dateDiff': {
-                                        'startDate': {
-                                            '$toDate': '$fields.created'
+                            "avgSecondsDiff": {
+                                "$avg": {
+                                    "$dateDiff": {
+                                        "startDate": {"$toDate": "$fields.created"},
+                                        "endDate": {
+                                            "$toDate": "$fields.resolutiondate"
                                         },
-                                        'endDate': {
-                                            '$toDate': '$fields.resolutiondate'
-                                        },
-                                        'unit': 'second'
+                                        "unit": "second",
                                     }
                                 }
                             },
-                            'count': {
-                                '$count': {}
-                            }
+                            "count": {"$count": {}},
                         }
-                    }, {
-                        '$project': {
-                            'year': {
-                                '$toInt': {
-                                    '$first': {
-                                        '$split': [
-                                            '$_id', '?<?'
-                                        ]
-                                    }
+                    },
+                    {
+                        "$project": {
+                            "year": {"$toInt": {"$first": {"$split": ["$_id", "?<?"]}}},
+                            "week": {
+                                "$toInt": {
+                                    "$arrayElemAt": [{"$split": ["$_id", "?<?"]}, 1]
                                 }
                             },
-                            'week': {
-                                '$toInt': {
-                                    '$arrayElemAt': [
-                                        {
-                                            '$split': [
-                                                '$_id', '?<?'
-                                            ]
-                                        }, 1
-                                    ]
-                                }
-                            },
-                            'priorityLevel': {
-                                '$last': {
-                                    '$split': [
-                                        '$_id', '?<?'
-                                    ]
-                                }
-                            },
-                            'avgSecondsDiff': 1,
-                            'count': 1
+                            "priorityLevel": {"$last": {"$split": ["$_id", "?<?"]}},
+                            "avgSecondsDiff": 1,
+                            "count": 1,
                         }
-                    }, {
-                        '$sort': {
-                            'year': -1,
-                            'week': -1,
-                            'priorityLevel': 1
-                        }
-                    }
+                    },
+                    {"$sort": {"year": -1, "week": -1, "priorityLevel": 1}},
                 ]
             )
         )
 
     def get_priority_name(record, default="NULL"):
-        return record.get("name", default)
+        return record.get("_id", default)
 
     def get_priorities(records):
         return [get_priority_name(record) for record in records]
@@ -183,28 +213,37 @@ def create_df(jira):
     date_df = pd.DataFrame(date_diff_records)
 
     # remove the values from the list that do not have both high and low priority lists
-    duplicates_df = date_df.loc[date_df.duplicated(subset=['year', 'week'], keep=False)].reset_index(drop=True)
+    duplicates_df = date_df.loc[
+        date_df.duplicated(subset=["year", "week"], keep=False)
+    ].reset_index(drop=True)
 
     factors = []
     # factors = [avgLow, avgHigh, countLow, countHigh, factor (high/low)]
     for index in range(0, len(duplicates_df)):
         if duplicates_df.iloc[index]["priorityLevel"] == "false":
             low_prio = duplicates_df.iloc[index]
-            high_prio = duplicates_df.iloc[index+1]
-            factors.append([
-                low_prio['avgSecondsDiff'],
-                high_prio['avgSecondsDiff'],
-                low_prio['count'],
-                high_prio['count'],
-                (high_prio['avgSecondsDiff'] / low_prio['avgSecondsDiff'])
-            ])
+            high_prio = duplicates_df.iloc[index + 1]
+            factors.append(
+                [
+                    low_prio["avgSecondsDiff"],
+                    high_prio["avgSecondsDiff"],
+                    low_prio["count"],
+                    high_prio["count"],
+                    (high_prio["avgSecondsDiff"] / low_prio["avgSecondsDiff"]),
+                ]
+            )
 
-    factor_df = pd.DataFrame(factors, columns=["avgLow", "avgHigh", "countLow", "countHigh", "Factor(high/low)"])
+    factor_df = pd.DataFrame(
+        factors,
+        columns=["avgLow", "avgHigh", "countLow", "countHigh", "Factor(high/low)"],
+    )
 
     print(factor_df)
-    with open('factors.csv', 'w+') as f:
+    with open("factors.csv", "w+") as f:
         factor_df.to_csv(f, header=True)
-    print(f'Count Low: {factor_df["countLow"].sum()}, High: {factor_df["countHigh"].sum()}. Average factor: {factor_df["Factor(high/low)"].mean()}.')
+    print(
+        f'Count Low: {factor_df["countLow"].sum()}, High: {factor_df["countHigh"].sum()}. Average factor: {factor_df["Factor(high/low)"].mean()}.'
+    )
 
     return df
 
@@ -216,7 +255,7 @@ def compute_stats_1(jiras=ALL_JIRAS):
         print(df, "\n")
 
 
-compute_stats_1()
+compute_stats_1(["Mojang"])
 
 
 ###
