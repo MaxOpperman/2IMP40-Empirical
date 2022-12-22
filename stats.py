@@ -1,11 +1,9 @@
-# Database & File IO
-from pymongo import MongoClient
-import json5 as json
+from datetime import timedelta
 
-# Standard Data Manipulation
-from collections import defaultdict
-import pandas as pd
+import json5 as json
 import numpy as np
+import pandas as pd
+from pymongo import MongoClient
 
 pd.set_option("display.max_colwidth", None)  # We want to see all data
 from statistics import mean, median
@@ -32,40 +30,77 @@ with open("./jira_issuelinktype_information.json") as f:
 ALL_JIRAS = [jira_name for jira_name in jira_data_sources.keys()]
 
 
-def create_df(jira):
+def create_df_1(jira):
     def extract_mean_and_count():
         return list(
             db[jira].aggregate(
                 [
-                    {"$match": {"fields.issuelinks": {"$exists": True}}},
+                    {
+                        "$match": {
+                            "fields.issuelinks": {"$exists": True},
+                            "fields.resolutiondate": {
+                                "$exists": True,
+                                "$ne": None,
+                            },
+                        }
+                    },
                     {
                         "$group": {
                             "_id": "$fields.priority",
                             "avg": {
                                 "$avg": {"$size": "$fields.issuelinks"},
                             },
+                            "avgDateDiff": {
+                                "$avg": {
+                                    "$dateDiff": {
+                                        "startDate": {"$toDate": "$fields.created"},
+                                        "endDate": {
+                                            "$toDate": "$fields.resolutiondate"
+                                        },
+                                        "unit": "second",
+                                    },
+                                },
+                            },
                             "count": {"$count": {}},
                         }
                     },
-                    {"$project": {"_id.name": 1, "avg": 1, "count": 1}},
+                    {
+                        "$project": {
+                            "_id": 0,
+                            "name": "$_id.name",
+                            "avg": 1,
+                            "avgDateDiff": 1,
+                            "count": 1,
+                        }
+                    },
                 ]
             )
         )
 
     def get_priority_name(record, default="NULL"):
-        return record.get("_id", {}).get("name", default)
+        return record.get("name", default)
 
     def get_priorities(records):
         return [get_priority_name(record) for record in records]
 
     records = extract_mean_and_count()
 
-    df = pd.DataFrame(np.nan, index=get_priorities(records), columns=["Mean", "Count"])
+    print(records)
+
+    df = pd.DataFrame(
+        np.nan,
+        index=get_priorities(records),
+        columns=["Mean", "Count", "Mean Date Diff"],
+    )
 
     for record in records:
         priority_name = get_priority_name(record)
         df.loc[priority_name, "Mean"] = record["avg"]
         df.loc[priority_name, "Count"] = record["count"]
+
+        df.loc[priority_name, "Mean Date Diff"] = timedelta(
+            seconds=record["avgDateDiff"]
+        )
 
     return df
 
@@ -73,11 +108,11 @@ def create_df(jira):
 def compute_stats_1(jiras=ALL_JIRAS):
     for jira in jiras:
         print(f"Processing {jira}...")
-        df = create_df(jira)
+        df = create_df_1(jira)
         print(df, "\n")
 
 
-compute_stats_1()
+compute_stats_1(["Hyperledger"])
 
 
 ###
