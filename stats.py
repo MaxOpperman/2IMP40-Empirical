@@ -37,7 +37,7 @@ def create_df(jira):
                 [
                     {
                         "$match": {
-                            "fields.issuelinks": {"$exists": True},
+                            "fields.issuelinks": {"$type": "array"},
                         }
                     },
                     {
