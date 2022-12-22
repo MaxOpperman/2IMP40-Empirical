@@ -66,38 +66,95 @@ def create_df(jira):
             db[jira].aggregate(
                 [
                     {
-                        "$match": {
-                            "fields.resolutiondate": {
-                                "$exists": True,
-                                "$ne": None,
-                            },
+                        '$match': {
+                            'fields.resolutiondate': {
+                                '$exists': True,
+                                '$ne': None
+                            }
                         }
-                    },
-                    {
-                        "$group": {
-                            "_id": "$fields.priority",
-                            "avgDateDiff": {
-                                "$avg": {
-                                    "$dateDiff": {
-                                        "startDate": {"$toDate": "$fields.created"},
-                                        "endDate": {
-                                            "$toDate": "$fields.resolutiondate"
+                    }, {
+                        '$group': {
+                            '_id': {
+                                '$concat': [
+                                    {
+                                        '$toString': {
+                                            '$year': {
+                                                '$toDate': '$fields.created'
+                                            }
+                                        }
+                                    }, '?<?', {
+                                        '$toString': {
+                                            '$week': {
+                                                '$toDate': '$fields.created'
+                                            }
+                                        }
+                                    }, '?<?', {
+                                        '$toString': {
+                                            '$in': [
+                                                '$fields.priority.name', [
+                                                    'Blocker', 'Complex Fast-Track', 'Critical', 'High', 'Highest', 'Major'
+                                                ]
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            'avgSecondsDiff': {
+                                '$avg': {
+                                    '$dateDiff': {
+                                        'startDate': {
+                                            '$toDate': '$fields.created'
                                         },
-                                        "unit": "second",
-                                    },
-                                },
+                                        'endDate': {
+                                            '$toDate': '$fields.resolutiondate'
+                                        },
+                                        'unit': 'second'
+                                    }
+                                }
                             },
-                            "count": {"$count": {}},
+                            'count': {
+                                '$count': {}
+                            }
                         }
-                    },
-                    {
-                        "$project": {
-                            "_id": 0,
-                            "name": "$_id.name",
-                            "avgDateDiff": 1,
-                            "count": 1,
+                    }, {
+                        '$project': {
+                            'year': {
+                                '$toInt': {
+                                    '$first': {
+                                        '$split': [
+                                            '$_id', '?<?'
+                                        ]
+                                    }
+                                }
+                            },
+                            'week': {
+                                '$toInt': {
+                                    '$arrayElemAt': [
+                                        {
+                                            '$split': [
+                                                '$_id', '?<?'
+                                            ]
+                                        }, 1
+                                    ]
+                                }
+                            },
+                            'priorityLevel': {
+                                '$last': {
+                                    '$split': [
+                                        '$_id', '?<?'
+                                    ]
+                                }
+                            },
+                            'avgSecondsDiff': 1,
+                            'count': 1
                         }
-                    },
+                    }, {
+                        '$sort': {
+                            'year': -1,
+                            'week': -1,
+                            'priorityLevel': 1
+                        }
+                    }
                 ]
             )
         )
@@ -121,14 +178,33 @@ def create_df(jira):
         df.loc[priority_name, "Mean Link Count"] = record["avg"]
         df.loc[priority_name, "PriorCount"] = int(record["count"])
 
-    records = extract_mean_date_diff()
+    date_diff_records = extract_mean_date_diff()
 
-    for record in records:
-        priority_name = get_priority_name(record)
-        df.loc[priority_name, "Mean Date Diff"] = timedelta(
-            seconds=record["avgDateDiff"]
-        )
-        df.loc[priority_name, "DateCount"] = int(record["count"])
+    date_df = pd.DataFrame(date_diff_records)
+
+    # remove the values from the list that do not have both high and low priority lists
+    duplicates_df = date_df.loc[date_df.duplicated(subset=['year', 'week'], keep=False)].reset_index(drop=True)
+
+    factors = []
+    # factors = [avgLow, avgHigh, countLow, countHigh, factor (high/low)]
+    for index in range(0, len(duplicates_df)):
+        if duplicates_df.iloc[index]["priorityLevel"] == "false":
+            low_prio = duplicates_df.iloc[index]
+            high_prio = duplicates_df.iloc[index+1]
+            factors.append([
+                low_prio['avgSecondsDiff'],
+                high_prio['avgSecondsDiff'],
+                low_prio['count'],
+                high_prio['count'],
+                (high_prio['avgSecondsDiff'] / low_prio['avgSecondsDiff'])
+            ])
+
+    factor_df = pd.DataFrame(factors, columns=["avgLow", "avgHigh", "countLow", "countHigh", "Factor(high/low)"])
+
+    print(factor_df)
+    with open('factors.csv', 'w+') as f:
+        factor_df.to_csv(f, header=True)
+    print(f'Count Low: {factor_df["countLow"].sum()}, High: {factor_df["countHigh"].sum()}. Average factor: {factor_df["Factor(high/low)"].mean()}.')
 
     return df
 
