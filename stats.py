@@ -48,8 +48,8 @@ def create_df(jira):
             "Mojang": {
                 VERY_LOW: [],
                 LOW: ["Low"],
-                NORMAL: [],
-                HIGH: [],
+                NORMAL: ["Normal"],
+                HIGH: ["Important"],
                 VERY_HIGH: ["Blocker", "Critical", "Very Important"],
             }
         }
@@ -189,24 +189,18 @@ def create_df(jira):
             )
         )
 
-    def get_priority_name(record, default="NULL"):
-        return record.get("_id", default)
-
-    def get_priorities(records):
-        return [get_priority_name(record) for record in records]
+    df = pd.DataFrame(
+        0,
+        index=STD_PRIORITIES,
+        columns=["Mean Link Count", "PriorCount"],
+    )
 
     records = extract_mean_and_count()
 
-    df = pd.DataFrame(
-        np.nan,
-        index=get_priorities(records),
-        columns=["Mean Link Count", "PriorCount", "Mean Date Diff", "DateCount"],
-    )
-
     for record in records:
-        priority_name = get_priority_name(record)
+        priority_name = record["_id"]
         df.loc[priority_name, "Mean Link Count"] = record["avg"]
-        df.loc[priority_name, "PriorCount"] = int(record["count"])
+        df.loc[priority_name, "PriorCount"] = record["count"]
 
     date_diff_records = extract_mean_date_diff()
 
