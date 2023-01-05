@@ -46,11 +46,14 @@ def create_df(jira):
     def prior_to_repo_prior(priority):
         priority_map = {
             "Mojang": {
-                VERY_LOW: [],
-                LOW: ["Low"],
-                NORMAL: ["Normal"],
-                HIGH: ["Important"],
-                VERY_HIGH: ["Blocker", "Critical", "Very Important"],
+                VERY_LOW: ["Lowest", "Trivial", "P5-Trivial", "6 - Trivial", "Trivial - P5", "P5: Not important",
+                           "Optional", "Unprioritized"],
+                LOW: ["Low", "Minor", "P4-Low", "5 - Minor", "Minor - P4", "P4: Low"],
+                NORMAL: ["Normal", "Medium", "P3-Medium", "4 - Normal", "Major - P3", "P3: Somewhat important"],
+                HIGH: ["Important", "Major", "High", "P2-High", "3 - High", "Critical - P2", "P2: Important"],
+                VERY_HIGH: ["Blocker", "Critical", "Very Important", "Highest", "P1-Urgent", "1 - Blocker",
+                            "2 - Critical", "Level 1", "Level 2", "Level 3", "Level 4", "Blocker - P1", "P1: Critical",
+                            "P0: Blocker", "Urgent", "Severe", "Showstopper", "Complex Fast-Track"],
             }
         }
 
