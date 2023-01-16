@@ -39,12 +39,105 @@ STD_PRIORITIES = [VERY_LOW, LOW, NORMAL, HIGH, VERY_HIGH]
 
 
 def priority_fields(jira: str) -> list[str]:
-    fields = {"Mojang": ["$fields.customfield_12200.value"]}
-    return ["$fields.priority.name"] + fields.get(jira, [])
+    fields = {
+        "Apache": [
+            "customfield_12311037",
+            "customfield_12311032",
+            "customfield_12311027",
+            "customfield_12311022",
+            "customfield_10023",
+        ],
+        "Hyperledger": [],
+        "IntelDAOS": [],
+        "JFrog": ["customfield_12903"],
+        "Jira": ["customfield_20234", "customfield_10600", "customfield_10290"],
+        "JiraEcosystem": ["customfield_19505"],
+        "MariaDB": [],
+        "Mindville": [],
+        "Mojang": ["customfield_12200"],
+        "MongoDB": [],
+        "Qt": [],
+        "RedHat": [
+            "customfield_12317338",
+            "customfield_12317256",
+            "customfield_12315842",
+            "customfield_12314440",
+            "customfield_12313442",
+            "customfield_12312941",
+            "customfield_12312940",
+            "customfield_12312340",
+        ],
+        "Sakai": [],
+        "SecondLife": [],
+        "Sonatype": ["customfield_13603"],
+        "Spring": [],
+    }
+
+    custom_fields = fields[jira]
+    custom_fields = map(lambda x: f"$fields.{x}.value", custom_fields)
+    custom_fields = list(custom_fields)
+
+    return ["$fields.priority.name"] + custom_fields
 
 
 def prior_to_repo_prior(jira: str, priority: str) -> list[str]:
     priority_map = {
+        "Apache": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "Hyperledger": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "IntelDAOS": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "JFrog": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "Jira": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "JiraEcosystem": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "MariaDB": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "Mindville": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
         "Mojang": {
             VERY_LOW: [
                 "Lowest",
@@ -94,7 +187,56 @@ def prior_to_repo_prior(jira: str, priority: str) -> list[str]:
                 "Showstopper",
                 "Complex Fast-Track",
             ],
-        }
+        },
+        "MongoDB": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "Qt": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "RedHat": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "Sakai": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "SecondLife": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "Sonatype": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
+        "Spring": {
+            VERY_LOW: [],
+            LOW: [],
+            NORMAL: [],
+            HIGH: [],
+            VERY_HIGH: [],
+        },
     }
 
     return priority_map[jira][priority]
