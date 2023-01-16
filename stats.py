@@ -38,87 +38,108 @@ VERY_HIGH = "Very High"
 STD_PRIORITIES = [VERY_LOW, LOW, NORMAL, HIGH, VERY_HIGH]
 
 
-def create_df(jira):
-    def priority_fields():
-        fields = {"Mojang": ["$fields.customfield_12200.value"]}
-        return ["$fields.priority.name"] + fields.get(jira, [])
+def priority_fields(jira: str) -> list[str]:
+    fields = {"Mojang": ["$fields.customfield_12200.value"]}
+    return ["$fields.priority.name"] + fields.get(jira, [])
 
-    def prior_to_repo_prior(priority):
-        priority_map = {
-            "Mojang": {
-                VERY_LOW: ["Lowest", "Trivial", "P5-Trivial", "6 - Trivial", "Trivial - P5", "P5: Not important",
-                           "Optional", "Unprioritized"],
-                LOW: ["Low", "Minor", "P4-Low", "5 - Minor", "Minor - P4", "P4: Low"],
-                NORMAL: ["Normal", "Medium", "P3-Medium", "4 - Normal", "Major - P3", "P3: Somewhat important"],
-                HIGH: ["Important", "Major", "High", "P2-High", "3 - High", "Critical - P2", "P2: Important"],
-                VERY_HIGH: ["Blocker", "Critical", "Very Important", "Highest", "P1-Urgent", "1 - Blocker",
-                            "2 - Critical", "Level 1", "Level 2", "Level 3", "Level 4", "Blocker - P1", "P1: Critical",
-                            "P0: Blocker", "Urgent", "Severe", "Showstopper", "Complex Fast-Track"],
-            }
+
+def prior_to_repo_prior(jira: str, priority: str) -> list[str]:
+    priority_map = {
+        "Mojang": {
+            VERY_LOW: [
+                "Lowest",
+                "Trivial",
+                "P5-Trivial",
+                "6 - Trivial",
+                "Trivial - P5",
+                "P5: Not important",
+                "Optional",
+                "Unprioritized",
+            ],
+            LOW: ["Low", "Minor", "P4-Low", "5 - Minor", "Minor - P4", "P4: Low"],
+            NORMAL: [
+                "Normal",
+                "Medium",
+                "P3-Medium",
+                "4 - Normal",
+                "Major - P3",
+                "P3: Somewhat important",
+            ],
+            HIGH: [
+                "Important",
+                "Major",
+                "High",
+                "P2-High",
+                "3 - High",
+                "Critical - P2",
+                "P2: Important",
+            ],
+            VERY_HIGH: [
+                "Blocker",
+                "Critical",
+                "Very Important",
+                "Highest",
+                "P1-Urgent",
+                "1 - Blocker",
+                "2 - Critical",
+                "Level 1",
+                "Level 2",
+                "Level 3",
+                "Level 4",
+                "Blocker - P1",
+                "P1: Critical",
+                "P0: Blocker",
+                "Urgent",
+                "Severe",
+                "Showstopper",
+                "Complex Fast-Track",
+            ],
         }
+    }
 
-        return priority_map[jira][priority]
+    return priority_map[jira][priority]
 
-    def generate_conditions(priorities=STD_PRIORITIES):
-        priority = priorities[0]
-        if len(priorities) == 1:
-            return {
-                "$cond": {
-                    "if": {
-                        "$in": [
-                            "$full_priority",
-                            prior_to_repo_prior(priority),
-                        ]
-                    },
-                    "then": priority,
-                    "else": "NO PRIORITY SHOULD NOT HAPPEN",
-                }
-            }
 
+def generate_conditions(jira: str, priorities: list[str] = STD_PRIORITIES):
+    priority = priorities[0]
+    if len(priorities) == 1:
         return {
             "$cond": {
                 "if": {
                     "$in": [
                         "$full_priority",
-                        prior_to_repo_prior(priority),
+                        prior_to_repo_prior(jira, priority),
                     ]
                 },
                 "then": priority,
-                "else": generate_conditions(priorities[1:]),
+                "else": "NO PRIORITY SHOULD NOT HAPPEN",
             }
         }
 
-    def normalize():
-        return [
-            {"$addFields": {"full_priority": {"$ifNull": priority_fields()}}},
-            {"$match": {"full_priority": {"$ne": None}}},
-            {"$addFields": {"std_priority": generate_conditions()}},
-        ]
-
-    def extract_mean_and_count():
-        return list(
-            db[jira].aggregate(
-                normalize()
-                + [
-                    {
-                        "$match": {
-                            "fields.issuelinks": {"$type": "array"},
-                        }
-                    },
-                    {
-                        "$group": {
-                            "_id": "$std_priority",
-                            "avg": {
-                                "$avg": {"$size": "$fields.issuelinks"},
-                            },
-                            "count": {"$count": {}},
-                        }
-                    },
+    return {
+        "$cond": {
+            "if": {
+                "$in": [
+                    "$full_priority",
+                    prior_to_repo_prior(jira, priority),
                 ]
-            )
-        )
+            },
+            "then": priority,
+            "else": generate_conditions(jira, priorities[1:]),
+        }
+    }
 
-    def extract_mean_date_diff():
+
+def normalize(jira: str):
+    return [
+        {"$addFields": {"full_priority": {"$ifNull": priority_fields(jira)}}},
+        {"$match": {"full_priority": {"$ne": None}}},
+        {"$addFields": {"std_priority": generate_conditions(jira)}},
+    ]
+
+
+def compute_rq_1(jiras: list[str] = ALL_JIRAS):
+    def extract_mean_date_diff(jira: str):
         return list(
             db[jira].aggregate(
                 [
@@ -192,68 +213,104 @@ def create_df(jira):
             )
         )
 
-    df = pd.DataFrame(
-        0,
-        index=STD_PRIORITIES,
-        columns=["Mean Link Count", "PriorCount"],
-    )
+    def create_df(jira: str):
+        date_diff_records = extract_mean_date_diff(jira)
 
-    records = extract_mean_and_count()
+        date_df = pd.DataFrame(date_diff_records)
 
-    for record in records:
-        priority_name = record["_id"]
-        df.loc[priority_name, "Mean Link Count"] = record["avg"]
-        df.loc[priority_name, "PriorCount"] = record["count"]
+        # remove the values from the list that do not have both high and low priority lists
+        duplicates_df = date_df.loc[
+            date_df.duplicated(subset=["year", "week"], keep=False)
+        ].reset_index(drop=True)
 
-    date_diff_records = extract_mean_date_diff()
+        factors = []
+        # factors = [avgLow, avgHigh, countLow, countHigh, factor (high/low)]
+        for index in range(0, len(duplicates_df)):
+            if duplicates_df.iloc[index]["priorityLevel"] == "false":
+                low_prio = duplicates_df.iloc[index]
+                high_prio = duplicates_df.iloc[index + 1]
+                factors.append(
+                    [
+                        low_prio["avgSecondsDiff"],
+                        high_prio["avgSecondsDiff"],
+                        low_prio["count"],
+                        high_prio["count"],
+                        (high_prio["avgSecondsDiff"] / low_prio["avgSecondsDiff"]),
+                    ]
+                )
 
-    date_df = pd.DataFrame(date_diff_records)
+        factor_df = pd.DataFrame(
+            factors,
+            columns=["avgLow", "avgHigh", "countLow", "countHigh", "Factor(high/low)"],
+        )
 
-    # remove the values from the list that do not have both high and low priority lists
-    duplicates_df = date_df.loc[
-        date_df.duplicated(subset=["year", "week"], keep=False)
-    ].reset_index(drop=True)
+        # print(factor_df)
+        with open("factors.csv", "w+") as f:
+            factor_df.to_csv(f, header=True)
+        print(
+            f'Count Low: {factor_df["countLow"].sum()}, High: {factor_df["countHigh"].sum()}. Average factor: {factor_df["Factor(high/low)"].mean()}.'
+        )
 
-    factors = []
-    # factors = [avgLow, avgHigh, countLow, countHigh, factor (high/low)]
-    for index in range(0, len(duplicates_df)):
-        if duplicates_df.iloc[index]["priorityLevel"] == "false":
-            low_prio = duplicates_df.iloc[index]
-            high_prio = duplicates_df.iloc[index + 1]
-            factors.append(
-                [
-                    low_prio["avgSecondsDiff"],
-                    high_prio["avgSecondsDiff"],
-                    low_prio["count"],
-                    high_prio["count"],
-                    (high_prio["avgSecondsDiff"] / low_prio["avgSecondsDiff"]),
-                ]
-            )
+        return factor_df
 
-    factor_df = pd.DataFrame(
-        factors,
-        columns=["avgLow", "avgHigh", "countLow", "countHigh", "Factor(high/low)"],
-    )
+    print("\nComputing stats for RQ1\n")
 
-    print(factor_df)
-    with open("factors.csv", "w+") as f:
-        factor_df.to_csv(f, header=True)
-    print(
-        f'Count Low: {factor_df["countLow"].sum()}, High: {factor_df["countHigh"].sum()}. Average factor: {factor_df["Factor(high/low)"].mean()}.'
-    )
-
-    return df
-
-
-def compute_stats_1(jiras=ALL_JIRAS):
     for jira in jiras:
         print(f"Processing {jira}...")
         df = create_df(jira)
         print(df, "\n")
 
 
-compute_stats_1(["Mojang"])
+def compute_rq_2(jiras: list[str] = ALL_JIRAS):
+    def extract_mean_and_count(jira: str):
+        return list(
+            db[jira].aggregate(
+                normalize(jira)
+                + [
+                    {
+                        "$match": {
+                            "fields.issuelinks": {"$type": "array"},
+                        }
+                    },
+                    {
+                        "$group": {
+                            "_id": "$std_priority",
+                            "avg": {
+                                "$avg": {"$size": "$fields.issuelinks"},
+                            },
+                            "count": {"$count": {}},
+                        }
+                    },
+                ]
+            )
+        )
 
+    def create_df(jira: str):
+        df = pd.DataFrame(
+            0,
+            index=STD_PRIORITIES,
+            columns=["Mean Link Count", "PriorCount"],
+        )
+
+        records = extract_mean_and_count(jira)
+
+        for record in records:
+            priority_name = record["_id"]
+            df.loc[priority_name, "Mean Link Count"] = record["avg"]
+            df.loc[priority_name, "PriorCount"] = record["count"]
+
+        return df
+
+    print("\nComputing stats for RQ2\n")
+
+    for jira in jiras:
+        print(f"Processing {jira}...")
+        df = create_df(jira)
+        print(df, "\n")
+
+
+compute_rq_1()
+compute_rq_2(["Mojang"])
 
 ###
 ### Old Stuff
