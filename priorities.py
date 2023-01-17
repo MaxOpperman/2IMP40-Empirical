@@ -31,9 +31,7 @@ def priority_fields(jira: str) -> list[str]:
         "MongoDB": [],
         "Qt": [],
         "RedHat": [
-            "customfield_12317338",
             "customfield_12317256",
-            "customfield_12315842",
             "customfield_12314440",
             "customfield_12313442",
             "customfield_12312941",
@@ -57,7 +55,7 @@ def extract_field_priorities(jira: str, field: str):
     return db[jira].distinct(field)
 
 
-for jira in ALL_JIRAS:
+for jira in ["RedHat"]:
     priorities = set()
 
     fields = priority_fields(jira)
