@@ -242,11 +242,8 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
                 normalize(jira) +
                 [
                     {
-                        '$match': {
-                            'fields.resolutiondate': {
-                                '$exists': True,
-                                '$ne': None
-                            }
+                        "$match": {
+                            "fields.resolutiondate": {"$exists": True, "$ne": None}
                         }
                     }, {
                     '$group': {
@@ -333,43 +330,72 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
                             '$toInt': {
                                 '$arrayElemAt': [
                                     {
-                                        '$split': [
-                                            '$_id', '?<?'
-                                        ]
-                                    }, 1
+                                        "$toString": {
+                                            "$year": {"$toDate": "$fields.created"}
+                                        }
+                                    },
+                                    "?<?",
+                                    {
+                                        "$toString": {
+                                            "$week": {"$toDate": "$fields.created"}
+                                        }
+                                    },
+                                    "?<?",
+                                    "$fields.priority.name",
                                 ]
-                            }
-                        },
-                        'priorityLevel': {
-                            '$last': {
-                                '$split': [
-                                    '$_id', '?<?'
-                                ]
-                            }
-                        },
-                        'medianDateDiff': {
-                            '$arrayElemAt': [
-                                '$dateDifferences', {
-                                    '$floor': {
-                                        '$divide': [
-                                            {
-                                                '$size': '$dateDifferences'
-                                            }, 2
-                                        ]
+                            },
+                            "avgSecondsDiff": {
+                                "$avg": {
+                                    "$dateDiff": {
+                                        "startDate": {"$toDate": "$fields.created"},
+                                        "endDate": {
+                                            "$toDate": "$fields.resolutiondate"
+                                        },
+                                        "unit": "second",
                                     }
                                 }
-                            ]
-                        },
-                        'avgSecondsDiff': 1,
-                        'count': 1
-                    }
-                }, {
-                    '$sort': {
-                        'year': -1,
-                        'week': -1,
-                        'priorityLevel': 1
-                    }
-                }
+                            },
+                            "count": {"$count": {}},
+                            "dateDifferences": {
+                                "$push": {
+                                    "$dateDiff": {
+                                        "startDate": {"$toDate": "$fields.created"},
+                                        "endDate": {
+                                            "$toDate": "$fields.resolutiondate"
+                                        },
+                                        "unit": "second",
+                                    }
+                                }
+                            },
+                        }
+                    },
+                    {
+                        "$project": {
+                            "year": {"$toInt": {"$first": {"$split": ["$_id", "?<?"]}}},
+                            "week": {
+                                "$toInt": {
+                                    "$arrayElemAt": [{"$split": ["$_id", "?<?"]}, 1]
+                                }
+                            },
+                            "priorityLevel": {"$last": {"$split": ["$_id", "?<?"]}},
+                            "medianDateDiff": {
+                                "$arrayElemAt": [
+                                    "$dateDifferences",
+                                    {
+                                        "$floor": {
+                                            "$divide": [
+                                                {"$size": "$dateDifferences"},
+                                                2,
+                                            ]
+                                        }
+                                    },
+                                ]
+                            },
+                            "avgSecondsDiff": 1,
+                            "count": 1,
+                        }
+                    },
+                    {"$sort": {"year": -1, "week": -1, "priorityLevel": 1}},
                 ]
             )
         )
@@ -436,7 +462,44 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
 
 def compute_rq_2(jiras: list[str] = ALL_JIRAS):
     def filter_issue_links():
-        return []
+        bad_issue_types = [
+            # Clone
+            "Cloners",
+            "Cloners (old)",
+            # Duplicate
+            "Duplicate",
+            # Split
+            "Issue split",
+            "Split",
+            "Work Breakdown",
+        ]
+
+        return [
+            {
+                "$set": {
+                    "issuelinks": {
+                        "$map": {
+                            "input": "$fields.issuelinks",
+                            "as": "issue",
+                            "in": "$$issue.type.name",
+                        }
+                    },
+                }
+            },
+            {
+                "$project": {
+                    "_id": 1,
+                    "std_priority": 1,
+                    "issuelinks": {
+                        "$filter": {
+                            "input": "$issuelinks",
+                            "as": "link",
+                            "cond": {"$not": {"$in": ["$$link", bad_issue_types]}},
+                        }
+                    },
+                }
+            },
+        ]
 
     def extract_mean_and_count(jira: str):
         return list(
@@ -447,8 +510,9 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
                     {
                         "$group": {
                             "_id": "$std_priority",
+                            "issuelink_sizes": {"$push": {"$size": "$issuelinks"}},
                             "avg": {
-                                "$avg": {"$size": "$fields.issuelinks"},
+                                "$avg": {"$size": "$issuelinks"},
                             },
                             "count": {"$count": {}},
                         }
@@ -461,7 +525,7 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
         df = pd.DataFrame(
             0,
             index=STD_PRIORITIES,
-            columns=["Mean Link Count", "PriorCount"],
+            columns=["Mean Link Count", "PriorCount", "Median Links"],
         )
 
         records = extract_mean_and_count(jira)
@@ -470,15 +534,22 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
             priority_name = record["_id"]
             df.loc[priority_name, "Mean Link Count"] = record["avg"]
             df.loc[priority_name, "PriorCount"] = record["count"]
+            df.loc[priority_name, "Median Links"] = median(record["issuelink_sizes"])
 
         return df
 
     print("\nComputing stats for RQ2\n")
 
+    df_final = pd.DataFrame(0, index=STD_PRIORITIES, columns=ALL_JIRAS + ["Aggregate"])
+
     for jira in jiras:
         print(f"Processing {jira}...")
         df = create_df(jira)
-        print(df, "\n")
+
+        for priority in STD_PRIORITIES:
+            df_final.loc[priority, jira] = df.loc[priority, "Median Links"]
+
+    print(df_final)
 
 
 compute_rq_1()
