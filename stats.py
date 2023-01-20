@@ -417,10 +417,6 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
                         "$group": {
                             "_id": "$std_priority",
                             "issuelink_sizes": {"$push": {"$size": "$issuelinks"}},
-                            "avg": {
-                                "$avg": {"$size": "$issuelinks"},
-                            },
-                            "count": {"$count": {}},
                         }
                     },
                 ]
@@ -431,15 +427,13 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
         df = pd.DataFrame(
             0,
             index=STD_PRIORITIES,
-            columns=["Mean Link Count", "PriorCount", "Median Links"],
+            columns=["Median Links"],
         )
 
         records = extract_mean_and_count(jira)
 
         for record in records:
             priority_name = record["_id"]
-            df.loc[priority_name, "Mean Link Count"] = record["avg"]
-            df.loc[priority_name, "PriorCount"] = record["count"]
             df.loc[priority_name, "Median Links"] = median(record["issuelink_sizes"])
 
         return df
