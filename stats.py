@@ -1,5 +1,7 @@
 import pandas as pd
 from pymongo import MongoClient
+import matplotlib.pyplot as plt
+import numpy as np
 
 pd.set_option("display.max_colwidth", None)  # We want to see all data
 from statistics import mean, median
@@ -237,6 +239,7 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
     def extract_mean_date_diff(jira: str):
         return list(
             db[jira].aggregate(
+                normalize(jira) +
                 [
                     {
                         '$match': {
@@ -261,7 +264,19 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
                                             '$toDate': '$fields.created'
                                         }
                                     }
-                                }, '?<?', '$fields.priority.name'
+                                },
+                                '?<?', {
+                                    "$cond": {
+                                        "if": {
+                                            "$in": [
+                                                "$std_priority",
+                                                [HIGH, VERY_HIGH],
+                                            ]
+                                        },
+                                        "then": HIGH,
+                                        "else": LOW,
+                                    }
+                                }
                             ]
                         },
                         'avgSecondsDiff': {
@@ -291,6 +306,15 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
                                     },
                                     'unit': 'second'
                                 }
+                            }
+                        }
+                    }
+                }, {
+                    '$set': {
+                        'dateDifferences': {
+                            '$sortArray': {
+                                'input': '$dateDifferences',
+                                'sortBy': 1
                             }
                         }
                     }
@@ -362,37 +386,49 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
 
         factors = []
         # factors = [avgLow, avgHigh, countLow, countHigh, factor (high/low)]
-        for index in range(0, len(duplicates_df)):
-            if duplicates_df.iloc[index]["priorityLevel"] == "false":
-                low_prio = duplicates_df.iloc[index]
-                high_prio = duplicates_df.iloc[index + 1]
+        for index, row in duplicates_df.iterrows():
+            if row["priorityLevel"] == HIGH:
+                low_row = duplicates_df.loc[(duplicates_df['year'] == row['year']) & (
+                        duplicates_df['week'] == row['week']) & (duplicates_df['priorityLevel'] == LOW)]
                 factors.append(
                     [
-                        low_prio["avgSecondsDiff"],
-                        high_prio["avgSecondsDiff"],
-                        low_prio["count"],
-                        high_prio["count"],
-                        (high_prio["avgSecondsDiff"] / low_prio["avgSecondsDiff"]),
+                        f"{row['year']}/{row['week']}",
+                        low_row.iloc[0]["avgSecondsDiff"],
+                        row["avgSecondsDiff"],
+                        low_row.iloc[0]["medianDateDiff"],
+                        row["medianDateDiff"],
+                        low_row.iloc[0]["count"],
+                        row["count"],
+                        (row["avgSecondsDiff"] / low_row.iloc[0]["avgSecondsDiff"]),
+                        (row["medianDateDiff"] / low_row.iloc[0]["medianDateDiff"]),
                     ]
                 )
 
         factor_df = pd.DataFrame(
             factors,
-            columns=["avgLow", "avgHigh", "countLow", "countHigh", "Factor(high/low)"],
+            columns=["creationDate", "avgLow", "avgHigh", "medianLow", "medianHigh", "countLow", "countHigh",
+                     "averageFactor", "medianFactor"],
+        )
+        print(
+            f'Count Low: {factor_df["countLow"].sum()}, High: {factor_df["countHigh"].sum()}.\n'
+            f'Averages factor: avg {factor_df["averageFactor"].mean()}, median {factor_df["averageFactor"].median()}.\n'
+            f'Medians factor: avg {factor_df["medianFactor"].mean()}, median {factor_df["medianFactor"].median()}'
         )
 
-        # print(factor_df)
+        factor_df = factor_df.sort_values(by=['medianFactor'])
+
+        # plt.bar(factor_df['creationDate'], factor_df['averageFactor'])
+        plt.bar(factor_df['creationDate'], factor_df['medianFactor'])
+        plt.show()
+
         with open("factors.csv", "w+") as f:
             factor_df.to_csv(f, header=True)
-        print(
-            f'Count Low: {factor_df["countLow"].sum()}, High: {factor_df["countHigh"].sum()}. Average factor: {factor_df["Factor(high/low)"].mean()}.'
-        )
 
-        return factor_df
+        return date_df
 
     print("\nComputing stats for RQ1\n")
 
-    for jira in jiras:
+    for jira in jiras[2:]:
         print(f"Processing {jira}...")
         df = create_df(jira)
         print(df, "\n")
@@ -445,5 +481,5 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
         print(df, "\n")
 
 
-# compute_rq_1()
-compute_rq_2()
+compute_rq_1()
+# compute_rq_2()
