@@ -326,76 +326,30 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
                                 }
                             }
                         },
-                        'week': {
-                            '$toInt': {
-                                '$arrayElemAt': [
-                                    {
-                                        "$toString": {
-                                            "$year": {"$toDate": "$fields.created"}
-                                        }
-                                    },
-                                    "?<?",
-                                    {
-                                        "$toString": {
-                                            "$week": {"$toDate": "$fields.created"}
-                                        }
-                                    },
-                                    "?<?",
-                                    "$fields.priority.name",
-                                ]
-                            },
-                            "avgSecondsDiff": {
-                                "$avg": {
-                                    "$dateDiff": {
-                                        "startDate": {"$toDate": "$fields.created"},
-                                        "endDate": {
-                                            "$toDate": "$fields.resolutiondate"
-                                        },
-                                        "unit": "second",
+                        "week": {
+                            "$toInt": {
+                                "$arrayElemAt": [{"$split": ["$_id", "?<?"]}, 1]
+                            }
+                        },
+                        "priorityLevel": {"$last": {"$split": ["$_id", "?<?"]}},
+                        "medianDateDiff": {
+                            "$arrayElemAt": [
+                                "$dateDifferences",
+                                {
+                                    "$floor": {
+                                        "$divide": [
+                                            {"$size": "$dateDifferences"},
+                                            2,
+                                        ]
                                     }
-                                }
-                            },
-                            "count": {"$count": {}},
-                            "dateDifferences": {
-                                "$push": {
-                                    "$dateDiff": {
-                                        "startDate": {"$toDate": "$fields.created"},
-                                        "endDate": {
-                                            "$toDate": "$fields.resolutiondate"
-                                        },
-                                        "unit": "second",
-                                    }
-                                }
-                            },
-                        }
-                    },
-                    {
-                        "$project": {
-                            "year": {"$toInt": {"$first": {"$split": ["$_id", "?<?"]}}},
-                            "week": {
-                                "$toInt": {
-                                    "$arrayElemAt": [{"$split": ["$_id", "?<?"]}, 1]
-                                }
-                            },
-                            "priorityLevel": {"$last": {"$split": ["$_id", "?<?"]}},
-                            "medianDateDiff": {
-                                "$arrayElemAt": [
-                                    "$dateDifferences",
-                                    {
-                                        "$floor": {
-                                            "$divide": [
-                                                {"$size": "$dateDifferences"},
-                                                2,
-                                            ]
-                                        }
-                                    },
-                                ]
-                            },
-                            "avgSecondsDiff": 1,
-                            "count": 1,
-                        }
-                    },
-                    {"$sort": {"year": -1, "week": -1, "priorityLevel": 1}},
+                                },
+                            ]
+                        },
+                        "avgSecondsDiff": 1,
+                        "count": 1,
+                    }
+                },
+                {"$sort": {"year": -1, "week": -1, "priorityLevel": 1}},
                 ]
             )
         )
