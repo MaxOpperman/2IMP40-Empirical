@@ -422,6 +422,15 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
             "Issue split",
             "Split",
             "Work Breakdown",
+            # Incorporate
+            "Collection",
+            "Container",
+            "Contains(WBSGantt)",
+            "Incorporate",
+            "Incorporates",
+            "Part",
+            "PartOf",
+            "Superset",
         ]
 
         return [
@@ -494,7 +503,12 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
 
     print("\nComputing stats for RQ2\n")
 
-    df_final = pd.DataFrame(0, index=STD_PRIORITIES, columns=ALL_JIRAS)
+    df_final = pd.DataFrame(
+        0, index=STD_PRIORITIES, columns=ALL_JIRAS + ["Median Maximums"]
+    )
+    df_temp = pd.DataFrame(
+        0, index=STD_PRIORITIES, columns=ALL_JIRAS + ["Median Maximums"]
+    )
 
     for jira in jiras:
         print(f"Processing {jira}...")
@@ -508,8 +522,16 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
                 df.loc[priority, "Q3"],
                 df.loc[priority, "Max"],
             )
+            df_temp.loc[priority, jira] = df.loc[priority, "Max"]
 
-    print(df_final.transpose())
+    df_temp["Median Maximums"] = df_temp.median(axis=1)
+
+    for priority in STD_PRIORITIES:
+        df_final.loc[priority, "Median Maximums"] = df_temp.loc[
+            priority, "Median Maximums"
+        ]
+
+    print(df_final.transpose().to_latex())
 
 
 # compute_rq_1()
