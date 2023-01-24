@@ -1,10 +1,9 @@
-import pandas as pd
-from pymongo import MongoClient
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from pymongo import MongoClient
 
 pd.set_option("display.max_colwidth", None)  # We want to see all data
-from statistics import mean, median
 
 client = MongoClient()
 db = client["JiraRepos"]
@@ -239,117 +238,102 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
     def extract_mean_date_diff(jira: str):
         return list(
             db[jira].aggregate(
-                normalize(jira) +
-                [
+                normalize(jira)
+                + [
                     {
                         "$match": {
                             "fields.resolutiondate": {"$exists": True, "$ne": None}
                         }
-                    }, {
-                    '$group': {
-                        '_id': {
-                            '$concat': [
-                                {
-                                    '$toString': {
-                                        '$year': {
-                                            '$toDate': '$fields.created'
+                    },
+                    {
+                        "$group": {
+                            "_id": {
+                                "$concat": [
+                                    {
+                                        "$toString": {
+                                            "$year": {"$toDate": "$fields.created"}
                                         }
-                                    }
-                                }, '?<?', {
-                                    '$toString': {
-                                        '$week': {
-                                            '$toDate': '$fields.created'
+                                    },
+                                    "?<?",
+                                    {
+                                        "$toString": {
+                                            "$week": {"$toDate": "$fields.created"}
                                         }
-                                    }
-                                },
-                                '?<?', {
-                                    "$cond": {
-                                        "if": {
-                                            "$in": [
-                                                "$std_priority",
-                                                [HIGH, VERY_HIGH],
-                                            ]
+                                    },
+                                    "?<?",
+                                    {
+                                        "$cond": {
+                                            "if": {
+                                                "$in": [
+                                                    "$std_priority",
+                                                    [HIGH, VERY_HIGH],
+                                                ]
+                                            },
+                                            "then": HIGH,
+                                            "else": LOW,
+                                        }
+                                    },
+                                ]
+                            },
+                            "avgSecondsDiff": {
+                                "$avg": {
+                                    "$dateDiff": {
+                                        "startDate": {"$toDate": "$fields.created"},
+                                        "endDate": {
+                                            "$toDate": "$fields.resolutiondate"
                                         },
-                                        "then": HIGH,
-                                        "else": LOW,
+                                        "unit": "second",
                                     }
                                 }
-                            ]
-                        },
-                        'avgSecondsDiff': {
-                            '$avg': {
-                                '$dateDiff': {
-                                    'startDate': {
-                                        '$toDate': '$fields.created'
-                                    },
-                                    'endDate': {
-                                        '$toDate': '$fields.resolutiondate'
-                                    },
-                                    'unit': 'second'
-                                }
-                            }
-                        },
-                        'count': {
-                            '$count': {}
-                        },
-                        'dateDifferences': {
-                            '$push': {
-                                '$dateDiff': {
-                                    'startDate': {
-                                        '$toDate': '$fields.created'
-                                    },
-                                    'endDate': {
-                                        '$toDate': '$fields.resolutiondate'
-                                    },
-                                    'unit': 'second'
-                                }
-                            }
-                        }
-                    }
-                }, {
-                    '$set': {
-                        'dateDifferences': {
-                            '$sortArray': {
-                                'input': '$dateDifferences',
-                                'sortBy': 1
-                            }
-                        }
-                    }
-                }, {
-                    '$project': {
-                        'year': {
-                            '$toInt': {
-                                '$first': {
-                                    '$split': [
-                                        '$_id', '?<?'
-                                    ]
-                                }
-                            }
-                        },
-                        "week": {
-                            "$toInt": {
-                                "$arrayElemAt": [{"$split": ["$_id", "?<?"]}, 1]
-                            }
-                        },
-                        "priorityLevel": {"$last": {"$split": ["$_id", "?<?"]}},
-                        "medianDateDiff": {
-                            "$arrayElemAt": [
-                                "$dateDifferences",
-                                {
-                                    "$floor": {
-                                        "$divide": [
-                                            {"$size": "$dateDifferences"},
-                                            2,
-                                        ]
+                            },
+                            "count": {"$count": {}},
+                            "dateDifferences": {
+                                "$push": {
+                                    "$dateDiff": {
+                                        "startDate": {"$toDate": "$fields.created"},
+                                        "endDate": {
+                                            "$toDate": "$fields.resolutiondate"
+                                        },
+                                        "unit": "second",
                                     }
-                                },
-                            ]
-                        },
-                        "avgSecondsDiff": 1,
-                        "count": 1,
-                    }
-                },
-                {"$sort": {"year": -1, "week": -1, "priorityLevel": 1}},
+                                }
+                            },
+                        }
+                    },
+                    {
+                        "$set": {
+                            "dateDifferences": {
+                                "$sortArray": {"input": "$dateDifferences", "sortBy": 1}
+                            }
+                        }
+                    },
+                    {
+                        "$project": {
+                            "year": {"$toInt": {"$first": {"$split": ["$_id", "?<?"]}}},
+                            "week": {
+                                "$toInt": {
+                                    "$arrayElemAt": [{"$split": ["$_id", "?<?"]}, 1]
+                                }
+                            },
+                            "priorityLevel": {"$last": {"$split": ["$_id", "?<?"]}},
+                            "medianDateDiff": {
+                                "$arrayElemAt": [
+                                    "$dateDifferences",
+                                    {
+                                        "$floor": {
+                                            "$divide": [
+                                                {"$size": "$dateDifferences"},
+                                                2,
+                                            ]
+                                        }
+                                    },
+                                ]
+                            },
+                            "avgSecondsDiff": 1,
+                            "count": 1,
+                        }
+                    },
+                    {"$sort": {"year": -1, "week": -1, "priorityLevel": 1}},
                 ]
             )
         )
@@ -368,8 +352,11 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
         # factors = [avgLow, avgHigh, countLow, countHigh, factor (high/low)]
         for index, row in duplicates_df.iterrows():
             if row["priorityLevel"] == HIGH:
-                low_row = duplicates_df.loc[(duplicates_df['year'] == row['year']) & (
-                        duplicates_df['week'] == row['week']) & (duplicates_df['priorityLevel'] == LOW)]
+                low_row = duplicates_df.loc[
+                    (duplicates_df["year"] == row["year"])
+                    & (duplicates_df["week"] == row["week"])
+                    & (duplicates_df["priorityLevel"] == LOW)
+                ]
                 factors.append(
                     [
                         f"{row['year']}/{row['week']}",
@@ -386,8 +373,17 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
 
         factor_df = pd.DataFrame(
             factors,
-            columns=["creationDate", "avgLow", "avgHigh", "medianLow", "medianHigh", "countLow", "countHigh",
-                     "averageFactor", "medianFactor"],
+            columns=[
+                "creationDate",
+                "avgLow",
+                "avgHigh",
+                "medianLow",
+                "medianHigh",
+                "countLow",
+                "countHigh",
+                "averageFactor",
+                "medianFactor",
+            ],
         )
         print(
             f'Count Low: {factor_df["countLow"].sum()}, High: {factor_df["countHigh"].sum()}.\n'
@@ -395,10 +391,10 @@ def compute_rq_1(jiras: list[str] = ALL_JIRAS):
             f'Medians factor: avg {factor_df["medianFactor"].mean()}, median {factor_df["medianFactor"].median()}'
         )
 
-        factor_df = factor_df.sort_values(by=['medianFactor'])
+        factor_df = factor_df.sort_values(by=["medianFactor"])
 
         # plt.bar(factor_df['creationDate'], factor_df['averageFactor'])
-        plt.bar(factor_df['creationDate'], factor_df['medianFactor'])
+        plt.bar(factor_df["creationDate"], factor_df["medianFactor"])
         plt.show()
 
         with open("factors.csv", "w+") as f:
@@ -475,30 +471,46 @@ def compute_rq_2(jiras: list[str] = ALL_JIRAS):
         df = pd.DataFrame(
             0,
             index=STD_PRIORITIES,
-            columns=["Median Links"],
+            columns=["Min", "Q1", "Median", "Q3", "Max"],
         )
 
         records = extract_mean_and_count(jira)
 
         for record in records:
             priority_name = record["_id"]
-            df.loc[priority_name, "Median Links"] = median(record["issuelink_sizes"])
+            q0, q1, q2, q3, q4 = np.percentile(
+                record["issuelink_sizes"], [0, 25, 50, 75, 100]
+            )
+            df.loc[priority_name, "Min"] = q0
+            df.loc[priority_name, "Q1"] = q1
+            df.loc[priority_name, "Median"] = q2
+            df.loc[priority_name, "Q3"] = q3
+            df.loc[priority_name, "Max"] = q4
 
         return df
 
+    def format_quartiles(q0: str, q1: str, q2: str, q3: str, q4: str) -> str:
+        return f"{q0}/{q1}/{q2}/{q3}/{q4}"
+
     print("\nComputing stats for RQ2\n")
 
-    df_final = pd.DataFrame(0, index=STD_PRIORITIES, columns=ALL_JIRAS + ["Aggregate"])
+    df_final = pd.DataFrame(0, index=STD_PRIORITIES, columns=ALL_JIRAS)
 
     for jira in jiras:
         print(f"Processing {jira}...")
         df = create_df(jira)
 
         for priority in STD_PRIORITIES:
-            df_final.loc[priority, jira] = df.loc[priority, "Median Links"]
+            df_final.loc[priority, jira] = format_quartiles(
+                df.loc[priority, "Min"],
+                df.loc[priority, "Q1"],
+                df.loc[priority, "Median"],
+                df.loc[priority, "Q3"],
+                df.loc[priority, "Max"],
+            )
 
-    print(df_final)
+    print(df_final.transpose())
 
 
-compute_rq_1()
-# compute_rq_2()
+# compute_rq_1()
+compute_rq_2()

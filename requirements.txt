@@ -3,3 +3,4 @@ pandas
 numpy
 json5
 black
+matplotlib
